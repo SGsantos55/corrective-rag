@@ -13,3 +13,4 @@ ipykernel
 google-genai
 langchain-google-genai
 langchain-openrouter
+streamlit
