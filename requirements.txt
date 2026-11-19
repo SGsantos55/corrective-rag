@@ -1,0 +1,15 @@
+pydantic
+langchain-core
+langchain-community
+langchain-groq
+sentence-transformers
+chromadb
+langchain-text-splitters
+langgraph
+python-dotenv
+openai
+pypdf
+ipykernel
+google-genai
+langchain-google-genai
+langchain-openrouter
