@@ -12,7 +12,8 @@ whether to answer directly, fall back to a live web search, or use a mix of both
 
 ## How it works
 
-The pipeline is built as a graph (`corrective.ipynb`) with the following stages:
+The pipeline is built as a LangGraph graph (`backend.py`, mirrored in `corrective.ipynb`)
+with the following stages:
 
 ```
             ┌───────────┐
@@ -48,9 +49,10 @@ CORRECT                      INCORRECT / AMBIGUOUS
 ```
 
 ### 1. Retrieve
-The source PDF (`source/MEMORY_MECHANISM_LLM-4.pdf`) is split into chunks and embedded
-with `sentence-transformers/all-MiniLM-L6-v2`, stored in a local Chroma vector store.
-For every question, the top-k most similar chunks are retrieved.
+The source PDF — uploaded via the Streamlit app, or `source/MEMORY_MECHANISM_LLM-4.pdf`
+in the notebook — is split into chunks and embedded with
+`sentence-transformers/all-MiniLM-L6-v2`, stored in a local Chroma vector store. For
+every question, the top-k most similar chunks are retrieved.
 
 ### 2. Evaluate (Grading)
 Each retrieved chunk is scored independently by an LLM evaluator on a 0.0–1.0 relevance
@@ -83,7 +85,9 @@ the context is empty, it responds with "I don't know" instead of hallucinating.
 
 ```
 corrective-rag/
-├── corrective.ipynb      # Main notebook: builds and runs the CRAG graph
+├── backend.py             # CRAG pipeline logic (vector store, graph, nodes, prompts) — plain Python, no UI
+├── app.py                 # Streamlit front end: upload a PDF, ask questions, view results
+├── corrective.ipynb      # Original exploratory notebook (same logic as backend.py)
 ├── testing_api.py        # Small standalone script to test an LLM API (OpenRouter)
 ├── requirements.txt       # Python dependencies
 ├── source/                # Input PDF(s) used to build the vector store
@@ -103,14 +107,40 @@ corrective-rag/
    ```
    GROQ_API_KEY=your_key_here
    TAVILY_API_KEY=your_key_here
-   OPENAI_API_KEY=your_key_here
    ```
-   Only `GROQ_API_KEY` (LLM) and `TAVILY_API_KEY` (web search) are required to run the
-   notebook as-is.
+   `GROQ_API_KEY` (LLM) is required. `TAVILY_API_KEY` (web search) is only needed for
+   the `INCORRECT` / `AMBIGUOUS` paths — without it, those verdicts will fail when they
+   try to search the web.
 
-3. Place a PDF in the `source/` folder (or point `PyPDFLoader` to your own file).
+## Streamlit app (recommended)
 
-4. Open `corrective.ipynb` and run the cells top to bottom.
+The pipeline is split into two layers:
+
+- **`backend.py`** — pure Python implementation of the CRAG graph (vector store
+  construction, LangGraph nodes, prompts, routing). No Streamlit or notebook code; it
+  can be imported from a UI, a script, or tests.
+- **`app.py`** — a thin Streamlit UI that imports `backend` and only handles file
+  upload, inputs, and rendering results.
+
+Run it with:
+
+```bash
+streamlit run app.py
+```
+
+Then, in the browser:
+1. Upload any source PDF in the sidebar (chunk size/overlap and top-k are adjustable
+   there too) and wait for it to be indexed.
+2. Type a question and click **Run CRAG**.
+3. Inspect the verdict, retrieved/good/web docs, sentence-level keep/drop decisions,
+   the refined context, and the final answer — all expandable in the UI.
+
+## Notebook (exploratory)
+
+`corrective.ipynb` contains the same pipeline logic as `backend.py`, hardcoded against
+a single PDF in `source/`. Useful for experimenting cell-by-cell, but `backend.py` /
+`app.py` are the maintained source of truth. To run it: place a PDF in `source/` (or
+point `PyPDFLoader` to your own file) and run the cells top to bottom.
 
 ## Key components
 
@@ -127,3 +157,8 @@ corrective-rag/
   per use case.
 - Structured outputs (scores, keep/drop decisions, rewritten queries) are enforced with
   Pydantic models via `with_structured_output`.
+- `app.py` caches the embeddings model, vector store, and graph resources with
+  `st.cache_resource` so re-asking questions doesn't re-embed the PDF. The embeddings
+  object is passed as `_embeddings` (leading underscore) to `build_vector_store` because
+  Streamlit can't hash a `SentenceTransformer` instance — the underscore tells it to
+  skip hashing that argument.
